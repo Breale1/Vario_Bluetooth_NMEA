@@ -22,8 +22,8 @@ http://code.google.com/p/tinkerit/wiki/SecretVoltmeter
 ///////////////////////////////////////// 
 short redPin = 3;						//pin + led battery state_1
 short greenPin = 4;						//pin + led battery state_2
-short speaker_pin1 = 9;   //9 	        //arduino speaker output -
-short speaker_pin2 = 10;    //10         //arduino speaker output +
+//short speaker_pin1 = 9;   //9 	        //arduino speaker output -
+//short speaker_pin2 = 10;    //10         //arduino speaker output +
 float vario_climb_rate_start = 0.5;    //minimum climb beeping value(ex. start climbing beeping at 0.4m/s)
 float vario_sink_rate_start = -0.5;    //maximum sink beeping value (ex. start sink beep at -1.1m/s)
 									   //numa asa com maior planeio isto é capaz de precisar de ser configurado.  -0.95m/s ?
@@ -32,7 +32,7 @@ float vario_sink_rate_start = -0.5;    //maximum sink beeping value (ex. start s
 #define PROTOCOL 2                      //define NMEA output: 1 = $LK8EX1, 2 = FlymasterF1, 0 = both
 #define NMEA_LED_pin 6 //13            // LED NMEA out pin 
 #define NMEA_OUT_per_SEC 3             // NMEA output string samples per second (1 to 20)
-#define VOLUME 2                       // volume 0-no sound, 1-low sound volume, 2-high sound volume (ALTERAR!)
+#define VOLUME 1                       // volume 0-no sound, 1-low sound volume, 2-high sound volume (ALTERAR!)
 
 SoftwareSerial mySerial(2, 3); // RX, TX
 /////////////////////////////////////////
@@ -62,7 +62,11 @@ float    beep;
 float    Beep_period;
 static long k[SAMPLES_ARR];
 int 	checkTempEveryMs=1000;				// read temp every X ms
-int     checkBattEveryMs=10000;				// check battery every X ms
+int     checkBattEveryMs=1000;				// check battery every X ms
+
+boolean bluetooth_alive	= false;					//check for bluetooth available
+boolean debugmode = false;
+float VarioSim = 1;
 
 static long Averaging_Filter(long input);
 static long Averaging_Filter(long input)	// moving average filter function
@@ -78,18 +82,18 @@ static long Averaging_Filter(long input)	// moving average filter function
   return ( sum / SAMPLES_ARR ) ;
 }
 
-void play_welcome_beep()                 //play only once welcome beep after turning on arduino vario
+void play_welcome_beep()					//play only once welcome beep after turning on arduino vario
 {
- // for (int aa=300;aa<=1500;aa=aa+100)
-  //{                
-    toneAC(500, 10, 2000, true);			// play beep on pin (note,duration)                
+ for (int aa=300;aa<=1500;aa=aa+100)
+  {                
+    toneAC(500, 1, 2000, true);			// play beep on pin (note,duration)                
     delay(100);
-  //}
-  //for (int aa=1500;aa>=100;aa=aa-100)	// play beep on pin (note,duration)
-  //{
- 	 toneAC(700, 10, 2000, true);			// play beep on pin (note,duration)
-    // delay(100);
-  //}
+  }
+  for (int aa=1500;aa>=100;aa=aa-100)		// play beep on pin (note,duration)
+  {
+ 	 toneAC(700, 1, 2000, true);			// play beep on pin (note,duration)
+     delay(100);
+  }
 }
 
 
@@ -122,7 +126,7 @@ void setup()
 	digitalWrite(greenPin, HIGH);
 	digitalWrite(redPin, HIGH); 
 	
-//	play_welcome_beep();				//everything is ready, play "welcome" sound
+	play_welcome_beep();				//everything is ready, play "welcome" sound
 	
 
   if (!bmp085.begin()) {
@@ -162,6 +166,7 @@ void loop(void)
  
  //Check Battery
 if (millis() >= (timestamp04+checkBattEveryMs))		//every 10 second get battery level
+//if (millis() >= (timestamp04+checkTempEveryMs))
 {
 	Battery_Vcc_mV = readVcc();							//get voltage in milivolts
 	Battery_Vcc_V =(float(Battery_Vcc_mV)/1000);		//get voltage in volts
@@ -191,12 +196,31 @@ if (millis() >= (timestamp04+checkBattEveryMs))		//every 10 second get battery l
 
 if (millis() >= (timestamp02+checkTempEveryMs))		
 	{
-	Temperature = bmp085.readTemperature();
-	my_temperature = Temperature;
-	timestamp02 = millis();	
+		Temperature = bmp085.readTemperature();
+		my_temperature = Temperature;
+		timestamp02 = millis();	
+	
+		//Check BlueTooth available
+			if( mySerial.available() )       // if data is available to read
+				{
+				bluetooth_alive = true;			
+				}
+			else
+				{
+				bluetooth_alive = false;
+				}
+			if (debugmode)						
+				{
+					if (VarioSim >= 15)
+					{
+						VarioSim = 0;
+					} 
+				VarioSim++;								//for(float aa=1;aa<=15;aa++){	
+				} 
+			
 	}
 	
-
+if (digitalRead(NMEA_LED_pin)== HIGH) {digitalWrite(NMEA_LED_pin, LOW);} else {digitalWrite(NMEA_LED_pin, HIGH);}
 
  // Vario algorithm
   for(int cc=1;cc<=maxsamples;cc++){
@@ -222,52 +246,63 @@ if (millis() >= (timestamp02+checkTempEveryMs))
 //       * background - [optional] Play note in background or pause till finished? (default: false, values: true/false)
 //   toneAC()    - Stop playing.
 //   noToneAC()  - Same as toneAC().
- vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);
- if ((time-beep)>Beep_period)                          
-	 beep=time;
-	 if (vario>vario_climb_rate_start && vario<=10 )
-	 {
-		 switch (VOLUME)
-		 {
-			 case 0:
-			 break;
-			 case 1:
-			 Beep_period=550-(vario*(30+vario));			 
-			 toneAC((1400+(200*vario)), 5, 420-(vario*(20+vario)), true);
-			 case 2:
-			 Beep_period=550-(vario*(30+vario));			 
-			 toneAC((1406+(200*vario)), 10, 420-(vario*(20+vario)), true);
-		 }
-	 } else if (vario >10)
-	 {
-		 switch (VOLUME)
-		 {
-			 case 0:
-			 break;
-			 case 1:
-			 Beep_period=160;			 
-			 toneAC(3450, 5, 120, true);
-			 case 2:
-			 Beep_period=160;			 
-			 toneAC(3450, 10, 120, true);
-		 }
-		 } else if (vario< vario_sink_rate_start){
+//Test
 
-		 switch (VOLUME)
-		 {
-			 case 0:
-			 break;
-			 case 1:
-			 Beep_period=200;			 
-			 toneAC(300, 5, 340, true);
-			 case 2:
-			 Beep_period=200;			 
-			 toneAC(300, 10, 340, true);
-		 }
-	 }
- }
-  
-  
+							//time to array
+if (debugmode)
+	{
+	vario = VarioSim;
+	}
+else
+	{
+	vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);		
+	}	
+ if ((time-beep)>Beep_period)                          
+	 {	 
+		beep=time;
+		if (vario>vario_climb_rate_start && vario<=10 && !bluetooth_alive && (VOLUME > 0) )
+		{
+			if (VOLUME == 1 )
+			{
+				Beep_period=550-(vario * 5);			 
+				//toneAC((1000 + (100 * vario)), 2, 50, true);
+				//toneAC((1000 + (100 * vario)), 2, 300 - (vario * 5), true);
+				toneAC((1400+(200*vario)), 2, 420-(vario*(20+vario)), true);
+			}
+			else
+			{
+				Beep_period=550-(vario*(30+vario));			 
+				toneAC((1400+(200*vario)), 10, 420-(vario*(20+vario)), true);			 
+			 }
+		}
+		else if (vario >10 && !bluetooth_alive && (VOLUME > 0))
+		{
+			if (VOLUME == 1 )
+			{
+				Beep_period=160;			 
+				toneAC(3450, 5, 120, true);
+			}
+			else
+			{
+				Beep_period=160;			 
+				toneAC(3450, 10, 120, true);		
+			}
+		}
+		else if (vario< vario_sink_rate_start && !bluetooth_alive)
+		{
+			if (VOLUME ==1 )
+			{
+				Beep_period=600;			 
+				toneAC(300, 5, 340, true);
+			}
+			else
+			{
+				Beep_period=600;			 
+				toneAC(300, 10, 340, true);			 
+			}
+		}
+	} 
+
 
   
 
@@ -292,7 +327,7 @@ if (millis() >= (timestamp02+checkTempEveryMs))
 // Example 0% = 1000. 14% = 1014 . Do not send float values for percentages.
 // Percentage should be 0 to 100, with no decimals, added by 1000!
  
- if ((millis() >= (timestamp03+(1000/NMEA_OUT_per_SEC))) && (PROTOCOL == 1))       
+if ((millis() >= (timestamp03+(1000/NMEA_OUT_per_SEC))) && (PROTOCOL == 1))       
   {
     int battery_percentage = map(Battery_Vcc_mV, 2500, 4300, 1, 100);  
     String str_out =                                                                 
