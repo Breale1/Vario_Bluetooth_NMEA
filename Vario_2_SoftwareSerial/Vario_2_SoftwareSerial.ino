@@ -1,31 +1,31 @@
 /*
-Links referencia 
+Links:
 -> GoFly
 https://sites.google.com/site/jarosrwebsite/para-nav
--> Algoritmo do vario
+-> Vario Algorithm
 http://taturno.com/2011/10/30/variometro-la-rivincita/   
 -> Evitar que o delay atrofie com o loop.
 http://www.daqq.eu/index.php?show=prj_sanity_nullifier 
--> Sacar voltagem
+-> Voltmeter
 http://code.google.com/p/tinkerit/wiki/SecretVoltmeter
  */
 
 #include <Wire.h>				//i2c library
 #include <Adafruit_BMP085.h>	//bmp085 barometric sensor library
 #include <toneAC.h>             //tone library
-#include <stdlib.h>                     //contem o dtostrf() para cast de float para string
+#include <stdlib.h>             
 #include <SoftwareSerial.h>
 
 
 /////////////////////////////////////////
-// Variaveis
+// Variables
 ///////////////////////////////////////// 
-short redPin = 3;						//pin + para led da bateria ficar vermelho
-short greenPin = 4;						//pin + para led da bateria ficar verde
-short speaker_pin1 = 8;   //9 	        //arduino speaker output -
-short speaker_pin2 = 2;    //10         //arduino speaker output +
+short redPin = 3;						//pin + led battery state_1
+short greenPin = 4;						//pin + led battery state_2
+short speaker_pin1 = 9;   //9 	        //arduino speaker output -
+short speaker_pin2 = 10;    //10         //arduino speaker output +
 float vario_climb_rate_start = 0.5;    //minimum climb beeping value(ex. start climbing beeping at 0.4m/s)
-float vario_sink_rate_start = -1.1;    //maximum sink beeping value (ex. start sink beep at -1.1m/s)
+float vario_sink_rate_start = -0.5;    //maximum sink beeping value (ex. start sink beep at -1.1m/s)
 									   //numa asa com maior planeio isto é capaz de precisar de ser configurado.  -0.95m/s ?
 #define SAMPLES_ARR 25                 //define moving average filter array size (2->30), more means vario is less sensitive and slower, NMEA output
 #define UART_SPEED 9600                //define serial transmision speed (9600,19200, etc...)
@@ -38,23 +38,21 @@ SoftwareSerial mySerial(2, 3); // RX, TX
 /////////////////////////////////////////
 /////////////////////////////////////////
 Adafruit_BMP085 bmp085;
-//Tone     tone_out1;
-//Tone     tone_out2;
 long     Temperature = 0;
-long     Pressure = 101325;                     // 1 Atm = 101325 Pa 
+long     Pressure = 101325;                 // 1 Atm = 101325 Pa 
 float    Altitude=0;
 float    Battery_Vcc_mV = 0;            	//Vcc from battery em mV
 float    Battery_Vcc_V = 0;             	//Vcc from battery em V
 const float p0 = 101325;             		//Pressure at sea level (Pa)
 unsigned long timestamp01 = millis();		//guarda timestamp inicial
-unsigned long timestamp02 = millis();		//timer para verificacao da temperatura (checkTempEveryMs)
-unsigned long timestamp03 = millis();		//timer para NMEA_OUT
-unsigned long timestamp04 = millis();		//timer para verificacao da bateria (checkBattEveryMs)
+unsigned long timestamp02 = millis();		//timer for tempmeasure (checkTempEveryMs)
+unsigned long timestamp03 = millis();		//timer for NMEA_OUT
+unsigned long timestamp04 = millis();		//timer for batterycheck (checkBattEveryMs)
 int      my_temperature = 1;
-char     altitude_arr[6];            //array para fazer cast de float para string 
-char     vario_arr[6];               //array para fazer cast de float para string 
-char     batt_arr[6];
-char     pressure_arr[10];
+char     altitude_arr[6];					//array alt string 
+char     vario_arr[6];						//array vario string 
+char     batt_arr[6];						//array battery string 
+char     pressure_arr[10];					//array pressure string
 
 int      samples=40;
 int      maxsamples=50;
@@ -63,11 +61,11 @@ float    tim[51];
 float    beep;
 float    Beep_period;
 static long k[SAMPLES_ARR];
-int 	checkTempEveryMs=1000;		// a quanto tempo deve ser verificada temperatura
-int     checkBattEveryMs=10000;		// a quanto tempo deve ser verificada bateria
+int 	checkTempEveryMs=1000;				// read temp every X ms
+int     checkBattEveryMs=10000;				// check battery every X ms
 
 static long Averaging_Filter(long input);
-static long Averaging_Filter(long input) // moving average filter function
+static long Averaging_Filter(long input)	// moving average filter function
 {
   long sum = 0;
   for (int i = 0; i < SAMPLES_ARR; i++) {
@@ -82,21 +80,18 @@ static long Averaging_Filter(long input) // moving average filter function
 
 void play_welcome_beep()                 //play only once welcome beep after turning on arduino vario
 {
-  for (int aa=300;aa<=1500;aa=aa+100)
-  {
-    //tone_out1.play(aa,200);             // play beep on pin (note,duration)
-    toneAC(aa, 10, 200, true);
-   //if (VOLUME==2){ tone_out2.play(aa+5,200);}             // play beep on pin (note,duration)
+ // for (int aa=300;aa<=1500;aa=aa+100)
+  //{                
+    toneAC(500, 10, 2000, true);			// play beep on pin (note,duration)                
     delay(100);
-  }
-  for (int aa=1500;aa>=100;aa=aa-100)
-  {
- 	 toneAC(aa, 10, 200, true);
-    //tone_out1.play(aa,200);             // play beep on pin (note,duration)
-   //if (VOLUME==2){ tone_out2.play(aa+5,200);}             // play beep on pin (note,duration)
-    delay(100);
-  }
+  //}
+  //for (int aa=1500;aa>=100;aa=aa-100)	// play beep on pin (note,duration)
+  //{
+ 	 toneAC(700, 10, 2000, true);			// play beep on pin (note,duration)
+    // delay(100);
+  //}
 }
+
 
 
 
@@ -110,44 +105,34 @@ long readVcc()
   while (bit_is_set(ADCSRA,ADSC));
   result = ADCL;
   result |= ADCH<<8;
-  result = 1126400L / result; // Back-calculate AVcc in mV
+  result = 1126400L / result;			// Back-calculate AVcc in mV
   return result;
 }
 
-void setup()                // setup() function to setup all necessary parameters before we go to endless loop() function
+// setup() function to setup all necessary parameters before we go to endless loop() function
+void setup()
 {
-  Serial.begin(UART_SPEED);       // set up arduino serial port
+  Serial.begin(UART_SPEED);				// set up arduino serial port  
+  mySerial.begin(9600);					// set the data rate for the SoftwareSerial port
+  Wire.begin();							// lets init i2c protocol
   
-  	// set the data rate for the SoftwareSerial port
-  mySerial.begin(9600);
-
-  Wire.begin();             // lets init i2c protocol
-  /*
-  if (VOLUME==1){
-  tone_out1.begin(speaker_pin1);       // piezo speaker output pin8 -
-  pinMode(speaker_pin2, OUTPUT);      // set pin for output NMEA LED blink;
-  digitalWrite(speaker_pin2, LOW); 
-  } 
-  else if (VOLUME==2){
-  tone_out1.begin(speaker_pin1);       // piezo speaker output pin8 -
-  tone_out2.begin(speaker_pin2);       // piezo speaker output pin9 +
-  }
-*/
- pinMode(redPin, OUTPUT);        // sets the digital pin as output
- pinMode(greenPin, OUTPUT);      // sets the digital pin as output 
- digitalWrite(greenPin, HIGH);
- digitalWrite(redPin, HIGH); 
+	pinMode(redPin, OUTPUT);			// sets the digital pin as output
+	pinMode(greenPin, OUTPUT);			// sets the digital pin as output 
+	pinMode(NMEA_LED_pin, OUTPUT);		// set pin for output NMEA LED blink;
+	digitalWrite(greenPin, HIGH);
+	digitalWrite(redPin, HIGH); 
+	
+//	play_welcome_beep();				//everything is ready, play "welcome" sound
+	
 
   if (!bmp085.begin()) {
 	Serial.println("Could not find a valid BMP085 sensor, check wiring!");
 	while (1) {}
-  } 
-                            
- //play_welcome_beep();      //everything is ready, play "welcome" sound
- pinMode(NMEA_LED_pin, OUTPUT);      // set pin for output NMEA LED blink;
-	
-
+  }                  
+ 
 }
+
+//Init Variables
 float nmea_vario_cms =0;
 float nmea_time_s=0;
 float nmea_alt_m=0;
@@ -155,7 +140,7 @@ float nmea_old_alt_m=0;
 
 void loop(void)
 {
-  float time=millis();              //take time, look into arduino millis() function
+  float time=millis();					//take time, look into arduino millis() function
   float vario=0;
   float N1=0;
   float N2=0;
@@ -165,22 +150,61 @@ void loop(void)
   
   Pressure = bmp085.readPressure();
   long average_pressure = Averaging_Filter(Pressure);                   //put it in filter and take average, this averaging is for NMEA output
-  Altitude = (float)44330 * (1 - pow(((float)Pressure/p0), 0.190295));  //take new altitude in meters from pressure sample, not from average pressure
- //
- nmea_alt_m = (float)44330 * (1 - pow(((float)average_pressure/p0), 0.190295));
+  Altitude = (float)44330 * (1 - pow(((float)Pressure/p0), 0.190295));  //take new altitude in meters from pressure sample, !!NOT FROM!! average pressure
+ 
+ nmea_alt_m = (float)44330 * (1 - pow(((float)average_pressure/p0), 0.190295));	//take new altitude in meters from pressure sample, !!FROM!! average pressure
  if ((millis() >= (nmea_time_s+1000))){
  nmea_vario_cms = ((nmea_alt_m-nmea_old_alt_m))*100; 
  nmea_old_alt_m = nmea_alt_m;
  nmea_time_s = millis();
  }
+ 
+ 
+ //Check Battery
+if (millis() >= (timestamp04+checkBattEveryMs))		//every 10 second get battery level
+{
+	Battery_Vcc_mV = readVcc();							//get voltage in milivolts
+	Battery_Vcc_V =(float(Battery_Vcc_mV)/1000);		//get voltage in volts
+	timestamp04 = millis();
 
- // algorimo do vario
+	//Serial.println(Battery_Vcc_V);
+	
+	//Display battery state via LED
+	if(Battery_Vcc_V > 3.60)
+	{
+		digitalWrite(greenPin, HIGH);
+		digitalWrite(redPin, LOW);
+	}
+	if(Battery_Vcc_V > 3.40 && Battery_Vcc_V < 3.60)
+	{
+		digitalWrite(greenPin, HIGH);
+		digitalWrite(redPin, HIGH);
+	}
+	if(Battery_Vcc_V <= 3.40)
+	{
+		digitalWrite(greenPin, LOW);
+		digitalWrite(redPin, HIGH);
+	}
+}
+
+//check Temp
+
+if (millis() >= (timestamp02+checkTempEveryMs))		
+	{
+	Temperature = bmp085.readTemperature();
+	my_temperature = Temperature;
+	timestamp02 = millis();	
+	}
+	
+
+
+ // Vario algorithm
   for(int cc=1;cc<=maxsamples;cc++){
-    alt[(cc-1)]=alt[cc]; //avança com o valor da "altitude" no array
-    tim[(cc-1)]=tim[cc]; //avança com o valor do "time" no array
+    alt[(cc-1)]=alt[cc];						//altidude to array
+    tim[(cc-1)]=tim[cc];						//time to array
   }; 
-  alt[maxsamples]=Altitude; //coloca a "altitude" no fim do array
-  tim[maxsamples]=time; //coloca o "time" no fim do array
+  alt[maxsamples]=Altitude;						//altidude to array
+  tim[maxsamples]=time;							//time to array
   float stime=tim[maxsamples-samples];
   for(int cc=(maxsamples-samples);cc<maxsamples;cc++){
     N1+=(tim[cc]-stime)*alt[cc];
@@ -189,89 +213,61 @@ void loop(void)
     D1+=(tim[cc]-stime)*(tim[cc]-stime);
     D2+=(tim[cc]-stime);
   };
-
+//SYNTAX:
+//   toneAC( frequency [, volume [, length [, background ]]] ) - Play a note.
+//     Parameters:
+//       * frequency  - Play the specified frequency indefinitely, turn off with toneAC().
+//       * volume     - [optional] Set a volume level. (default: 10, range: 0 to 10 [0 = off])
+//       * length     - [optional] Set the length to play in milliseconds. (default: 0 [forever], range: 0 to 2^32-1)
+//       * background - [optional] Play note in background or pause till finished? (default: false, values: true/false)
+//   toneAC()    - Stop playing.
+//   noToneAC()  - Same as toneAC().
  vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);
- if ((time-beep)>Beep_period)                          // TODO: eliminar o segundo piezo 
-  {
-    beep=time;
-    if (vario>vario_climb_rate_start && vario<=10 )
-    {
-      switch (VOLUME) 
-      {
-        case 0: 
-          break;
-        case 1:
-          Beep_period=550-(vario*(30+vario));
-          //tone_out1.play((1400+(200*vario)),420-(vario*(20+vario))); //sobe, logo beeps rapidos
-           toneAC((1400+(200*vario)), 10, 420-(vario*(20+vario)), true);
-        case 2:
-          Beep_period=550-(vario*(30+vario));
-          //tone_out1.play((1400+(200*vario)),420-(vario*(20+vario))); //sobe, logo beeps rapidos
-          //tone_out2.play((1406+(200*vario)),420-(vario*(20+vario)));
-          toneAC((1406+(200*vario)), 10, 420-(vario*(20+vario)), true);
-      }               
-    } else if (vario >10) 
-    {
-      switch (VOLUME) 
-      {
-        case 0: 
-          break;
-        case 1:
-          Beep_period=160;
-          //tone_out1.play(3450,120);
-        case 2:
-          Beep_period=160;
-          //tone_out1.play(3450,120);
-          //tone_out2.play(3456,120);
-      }               
-    } else if (vario< vario_sink_rate_start){
+ if ((time-beep)>Beep_period)                          
+	 beep=time;
+	 if (vario>vario_climb_rate_start && vario<=10 )
+	 {
+		 switch (VOLUME)
+		 {
+			 case 0:
+			 break;
+			 case 1:
+			 Beep_period=550-(vario*(30+vario));			 
+			 toneAC((1400+(200*vario)), 5, 420-(vario*(20+vario)), true);
+			 case 2:
+			 Beep_period=550-(vario*(30+vario));			 
+			 toneAC((1406+(200*vario)), 10, 420-(vario*(20+vario)), true);
+		 }
+	 } else if (vario >10)
+	 {
+		 switch (VOLUME)
+		 {
+			 case 0:
+			 break;
+			 case 1:
+			 Beep_period=160;			 
+			 toneAC(3450, 5, 120, true);
+			 case 2:
+			 Beep_period=160;			 
+			 toneAC(3450, 10, 120, true);
+		 }
+		 } else if (vario< vario_sink_rate_start){
 
-      switch (VOLUME) 
-      {
-        case 0: 
-          break;
-        case 1:
-          Beep_period=200;
-          //tone_out1.play(300,340);
-        case 2:
-          Beep_period=200;
-          //tone_out1.play(300,340);
-          //tone_out2.play(320,340);
-      }               
-    }
-  }
-
-  if (millis() >= (timestamp02+checkTempEveryMs))      //guarda temperatura e nivel bateria a casa segundo
-  {
-  	Temperature = bmp085.readTemperature();
-    my_temperature = Temperature/10;
-    timestamp02 = millis();
-  }
-
-  if (millis() >= (timestamp04+checkBattEveryMs))      //every 10 second get battery level
-  {
-    Battery_Vcc_mV = readVcc();                      //get voltage in milivolts
-    Battery_Vcc_V =(float(Battery_Vcc_mV)/1000);     //get voltage in volts
-    timestamp04 = millis();
-
-    //Serial.println(Battery_Vcc_V);
-    
-    if(Battery_Vcc_V > 3.60)
-    {
-      digitalWrite(greenPin, HIGH);
-      digitalWrite(redPin, LOW); 
-    }
-    if(Battery_Vcc_V > 3.40 && Battery_Vcc_V < 3.60)
-    {
-      digitalWrite(greenPin, HIGH);
-      digitalWrite(redPin, HIGH); 
-    }
-    if(Battery_Vcc_V <= 3.40)
-    {
-      digitalWrite(greenPin, LOW);
-      digitalWrite(redPin, HIGH); 
-    }
-  }
+		 switch (VOLUME)
+		 {
+			 case 0:
+			 break;
+			 case 1:
+			 Beep_period=200;			 
+			 toneAC(300, 5, 340, true);
+			 case 2:
+			 Beep_period=200;			 
+			 toneAC(300, 10, 340, true);
+		 }
+	 }
+ }
+  
+  
 
   
 
@@ -348,17 +344,17 @@ void loop(void)
     */
     //unsigned
     String str_out =
-    String("VARIO,"+                                      //$VARIO
-    String(dtostrf(((float)average_pressure/100),0,0,pressure_arr))+ //fPressure
+    String("VARIO,"+													//$VARIO
+    String(dtostrf(((float)average_pressure/100),0,0,pressure_arr))+	//fPressure
     String(",")+
-    String(dtostrf((nmea_vario_cms/10),2,2,vario_arr))+   //fVario
+    String(dtostrf((nmea_vario_cms/10),2,2,vario_arr))+					//fVario
     String(",")+                                   
-    String(dtostrf((Battery_Vcc_V),2,2,batt_arr))+  //Bat1Volts
-    String(",0,1")+                                   //Bat2Volts,BatBan k,
+    String(dtostrf((Battery_Vcc_V),2,2,batt_arr))+						//Bat1Volts
+    String(",0,1")+														//Bat2Volts,BatBan k,
     String(",")+
-    String(my_temperature,DEC)+                           //TempSensor1
-    String(",0"));                                        //TempSensor2
-
+    String(my_temperature,DEC)+											//TempSensor1
+    String(",0"));														//TempSensor2
+//VARIO,999.98,-12,12.4,12.7,0,21.3,25.5*66
 		
     unsigned int checksum_end,ai,bi;
     for (checksum_end = 0, ai = 0; ai < str_out.length(); ai++)
@@ -366,15 +362,16 @@ void loop(void)
       bi = (unsigned char)str_out[ai];
       checksum_end ^= bi;
     }
+	//Print Serial
     Serial.print("$");
     Serial.print(str_out);
     Serial.print("*");
-    Serial.println(checksum_end,HEX);      //checksum
-    
+    Serial.println(checksum_end,HEX);									//checksum
+    //Print BlueTooth
     mySerial.print("$");
     mySerial.print(str_out);
     mySerial.print("*");
-    mySerial.println(checksum_end,HEX);      //checksum
+    mySerial.println(checksum_end,HEX);									//checksum
     
     timestamp03 = millis();
     if (digitalRead(NMEA_LED_pin)== HIGH) 
