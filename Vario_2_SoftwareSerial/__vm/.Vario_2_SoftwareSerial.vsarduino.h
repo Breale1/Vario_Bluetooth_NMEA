@@ -22,7 +22,6 @@
 extern "C" void __cxa_pure_virtual() {;}
 
 void play_welcome_beep();
-long readVcc();
 //
 void loop(void);
 

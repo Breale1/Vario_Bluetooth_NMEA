@@ -20,8 +20,9 @@ http://code.google.com/p/tinkerit/wiki/SecretVoltmeter
 /////////////////////////////////////////
 // Variables
 ///////////////////////////////////////// 
-short redPin = 3;						//pin + led battery state_1
-short greenPin = 4;						//pin + led battery state_2
+short redPin = 11;						//pin + led battery state_1
+short greenPin = 12;
+#define NMEA_LED_pin 6 						//pin + led battery state_2
 //short speaker_pin1 = 9;   //9 	        //arduino speaker output -
 //short speaker_pin2 = 10;    //10         //arduino speaker output +
 float vario_climb_rate_start = 0.5;    //minimum climb beeping value(ex. start climbing beeping at 0.4m/s)
@@ -30,9 +31,9 @@ float vario_sink_rate_start = -0.5;    //maximum sink beeping value (ex. start s
 #define SAMPLES_ARR 25                 //define moving average filter array size (2->30), more means vario is less sensitive and slower, NMEA output
 #define UART_SPEED 9600                //define serial transmision speed (9600,19200, etc...)
 #define PROTOCOL 2                      //define NMEA output: 1 = $LK8EX1, 2 = FlymasterF1, 0 = both
-#define NMEA_LED_pin 6 //13            // LED NMEA out pin 
+            // LED NMEA out pin 
 #define NMEA_OUT_per_SEC 3             // NMEA output string samples per second (1 to 20)
-#define VOLUME 1                       // volume 0-no sound, 1-low sound volume, 2-high sound volume (ALTERAR!)
+#define VOLUME 2                       // volume 0-no sound, 1-low sound volume, 2-high sound volume (ALTERAR!)
 
 SoftwareSerial mySerial(2, 3); // RX, TX
 /////////////////////////////////////////
@@ -67,6 +68,7 @@ int     checkBattEveryMs=1000;				// check battery every X ms
 boolean bluetooth_alive	= false;					//check for bluetooth available
 boolean debugmode = false;
 float VarioSim = 1;
+int analogInput = 0;
 
 static long Averaging_Filter(long input);
 static long Averaging_Filter(long input)	// moving average filter function
@@ -95,24 +97,6 @@ void play_welcome_beep()					//play only once welcome beep after turning on ardu
      delay(100);
   }
 }
-
-
-
-
-long readVcc()
-{ 
-  long result;
-  // Read 1.1V reference against AVcc
-  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
-  delay(2); // Wait for Vref to settle
-  ADCSRA |= _BV(ADSC); // Convert
-  while (bit_is_set(ADCSRA,ADSC));
-  result = ADCL;
-  result |= ADCH<<8;
-  result = 1126400L / result;			// Back-calculate AVcc in mV
-  return result;
-}
-
 // setup() function to setup all necessary parameters before we go to endless loop() function
 void setup()
 {
@@ -124,7 +108,8 @@ void setup()
 	pinMode(greenPin, OUTPUT);			// sets the digital pin as output 
 	pinMode(NMEA_LED_pin, OUTPUT);		// set pin for output NMEA LED blink;
 	digitalWrite(greenPin, HIGH);
-	digitalWrite(redPin, HIGH); 
+	digitalWrite(redPin, HIGH);
+	pinMode(analogInput, INPUT); 
 	
 	play_welcome_beep();				//everything is ready, play "welcome" sound
 	
@@ -165,11 +150,10 @@ void loop(void)
  
  
  //Check Battery
-if (millis() >= (timestamp04+checkBattEveryMs))		//every 10 second get battery level
+if (millis() >= (timestamp02+checkTempEveryMs))		//every 10 second get battery level
 //if (millis() >= (timestamp04+checkTempEveryMs))
-{
-	Battery_Vcc_mV = readVcc();							//get voltage in milivolts
-	Battery_Vcc_V =(float(Battery_Vcc_mV)/1000);		//get voltage in volts
+{							
+	Battery_Vcc_V = (analogRead(analogInput)*0.0049);	//get voltage in volts	
 	timestamp04 = millis();
 
 	//Serial.println(Battery_Vcc_V);
